@@ -128,13 +128,15 @@ Changing `name` changes this path and the default serial. If a rename is necessa
 ## Development
 
 ```sh
-npm install
+npm ci
 npm run lint
 npm test
 npm pack --dry-run
 ```
 
 `npm test` builds the strict TypeScript source and runs the Node.js test suite. Publishing also runs lint and tests through `prepublishOnly`.
+
+See [Development testing](dev-testing.md) for isolated Homebridge 2 test procedures on macOS and Windows, including a loopback-only fake relay.
 
 ## Credits
 

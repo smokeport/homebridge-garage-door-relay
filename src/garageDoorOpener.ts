@@ -194,6 +194,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
   private movementTimer?: NodeJS.Timeout;
   private autoCloseTimer?: NodeJS.Timeout;
   private requestInFlight = false;
+  private operationToken = 0;
 
   constructor(
     private readonly log: Logging,
@@ -277,9 +278,11 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
     if (requestedState === TARGET_STATE.CLOSED) {
       if (this.config.autoClose) {
+        if (this.currentState === CURRENT_STATE.CLOSED || this.currentState === CURRENT_STATE.CLOSING) {
+          return;
+        }
         this.clearAllTimers();
-        this.setTargetState(TARGET_STATE.CLOSED);
-        this.setCurrentState(CURRENT_STATE.CLOSED);
+        this.startAutomaticClose();
         return;
       }
 
@@ -295,15 +298,23 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
   private async startOpening(): Promise<void> {
     this.clearAllTimers();
+    const operationToken = this.beginOperation();
     this.setTargetState(TARGET_STATE.OPEN);
     this.setCurrentState(CURRENT_STATE.OPENING);
 
     try {
       await this.triggerRelay(this.config.openURL, 'open');
     } catch (error) {
+      if (!this.isCurrentOperation(operationToken)) {
+        return;
+      }
       this.setTargetState(TARGET_STATE.CLOSED);
       this.setCurrentState(CURRENT_STATE.CLOSED);
       throw error;
+    }
+
+    if (!this.isCurrentOperation(operationToken)) {
+      return;
     }
 
     if (this.config.hasOpenSensor) {
@@ -329,15 +340,23 @@ export class GarageDoorOpener implements AccessoryPlugin {
     }
 
     this.clearAllTimers();
+    const operationToken = this.beginOperation();
     this.setTargetState(TARGET_STATE.CLOSED);
     this.setCurrentState(CURRENT_STATE.CLOSING);
 
     try {
       await this.triggerRelay(closeURL, 'close');
     } catch (error) {
+      if (!this.isCurrentOperation(operationToken)) {
+        return;
+      }
       this.setTargetState(TARGET_STATE.OPEN);
       this.setCurrentState(CURRENT_STATE.OPEN);
       throw error;
+    }
+
+    if (!this.isCurrentOperation(operationToken)) {
+      return;
     }
 
     if (this.config.hasClosedSensor) {
@@ -350,6 +369,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
   }
 
   private startAutomaticClose(): void {
+    this.beginOperation();
     this.clearMovementTimer();
     this.setTargetState(TARGET_STATE.CLOSED);
     this.setCurrentState(CURRENT_STATE.CLOSING);
@@ -407,6 +427,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
   private handleOpenSensor(value: string, background: boolean): void {
     if (value === 'true') {
+      this.beginOperation();
       this.clearMovementTimer();
       this.setTargetState(TARGET_STATE.OPEN);
       this.setCurrentState(CURRENT_STATE.OPEN);
@@ -420,6 +441,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
     if (background) {
       if (!this.config.hasClosedSensor) {
+        this.beginOperation();
         this.setTargetState(TARGET_STATE.CLOSED);
         this.setCurrentState(CURRENT_STATE.CLOSED);
       } else {
@@ -433,6 +455,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
       return;
     }
 
+    this.beginOperation();
     this.clearMovementTimer();
     this.setTargetState(TARGET_STATE.CLOSED);
     this.setCurrentState(CURRENT_STATE.CLOSING);
@@ -448,6 +471,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
   private handleClosedSensor(value: string, background: boolean): void {
     if (value === 'true') {
+      this.beginOperation();
       this.clearAllTimers();
       this.setTargetState(TARGET_STATE.CLOSED);
       this.setCurrentState(CURRENT_STATE.CLOSED);
@@ -461,6 +485,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
     if (background) {
       if (!this.config.hasOpenSensor) {
+        this.beginOperation();
         this.setTargetState(TARGET_STATE.OPEN);
         this.setCurrentState(CURRENT_STATE.OPEN);
       } else {
@@ -474,6 +499,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
       return;
     }
 
+    this.beginOperation();
     this.clearMovementTimer();
     this.setTargetState(TARGET_STATE.OPEN);
     this.setCurrentState(CURRENT_STATE.OPENING);
@@ -612,6 +638,15 @@ export class GarageDoorOpener implements AccessoryPlugin {
     if (this.config.debug) {
       this.log.debug(message);
     }
+  }
+
+  private beginOperation(): number {
+    this.operationToken += 1;
+    return this.operationToken;
+  }
+
+  private isCurrentOperation(operationToken: number): boolean {
+    return this.operationToken === operationToken;
   }
 
   private errorMessage(error: unknown): string {

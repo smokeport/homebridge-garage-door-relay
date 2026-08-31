@@ -99,6 +99,17 @@ async function createRelayServer() {
   return `http://127.0.0.1:${address.port}/relay`;
 }
 
+async function createDelayedRelayServer(delayMs) {
+  const server = http.createServer(async (_request, response) => {
+    await delay(delayMs);
+    response.end('OK');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  servers.push(server);
+  const address = server.address();
+  return `http://127.0.0.1:${address.port}/relay`;
+}
+
 afterEach(async () => {
   while (servers.length > 0) {
     const server = servers.pop();
@@ -226,6 +237,34 @@ test('retains legacy background and duplicate sensor-edge behavior', () => {
   accessory.shutdown();
 });
 
+test('ignores stale relay completions after a newer target change', async () => {
+  const persistPath = createTemporaryDirectory();
+  const openURL = await createDelayedRelayServer(100);
+  const closeURL = await createDelayedRelayServer(10);
+  const api = createApi(persistPath);
+  const accessory = new GarageDoorOpener(logger, {
+    accessory: 'GarageDoorOpener',
+    name: 'Race Door',
+    openURL,
+    closeURL,
+    hasClosedSensor: true,
+    hasOpenSensor: false,
+    openTime: 0,
+    closeTime: 1,
+  }, api);
+  const garageDoor = accessory.getServices()[1];
+  const target = garageDoor.getCharacteristic(Characteristic.TargetDoorState);
+
+  void target.setter(0);
+  await delay(5);
+  await target.setter(1);
+  accessory.handleWebhook({ closed: 'true' });
+  await delay(120);
+
+  assert.equal(garageDoor.getCharacteristic(Characteristic.CurrentDoorState).value, 1);
+  assert.equal(target.value, 1);
+});
+
 test('rejects contradictory sensor webhook parameters', () => {
   const persistPath = createTemporaryDirectory();
   const api = createApi(persistPath);
@@ -242,6 +281,31 @@ test('rejects contradictory sensor webhook parameters', () => {
     () => accessory.handleWebhook({ open: 'true', closed: 'false' }),
     /either open or closed/,
   );
+});
+
+test('simulates a closing transition for manual close in auto-close mode', async () => {
+  const persistPath = createTemporaryDirectory();
+  const relayURL = await createRelayServer();
+  const api = createApi(persistPath);
+  const accessory = new GarageDoorOpener(logger, {
+    accessory: 'GarageDoorOpener',
+    name: 'Auto Door',
+    openURL: relayURL,
+    autoClose: true,
+    autoCloseDelay: 60,
+    openTime: 0,
+    closeTime: 1,
+  }, api);
+  const garageDoor = accessory.getServices()[1];
+  const target = garageDoor.getCharacteristic(Characteristic.TargetDoorState);
+
+  await target.setter(0);
+  await delay(10);
+  await target.setter(1);
+
+  assert.equal(garageDoor.getCharacteristic(Characteristic.CurrentDoorState).value, 3);
+  assert.equal(target.value, 1);
+  assert.notEqual(accessory.movementTimer, undefined);
 });
 
 

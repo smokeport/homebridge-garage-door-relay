@@ -1,120 +1,205 @@
 {
-    "pluginAlias": "GarageDoorOpener",
-    "pluginType": "accessory",
-    "singular": false,
-    "schema": {
-        "type": "object",
-      "properties": {
-        "name": {
-          "title": "Name",
-          "type": "string",
-          "required": true,
-          "description": "Name to appear in the Home app"
-
+  "pluginAlias": "GarageDoorOpener",
+  "pluginType": "accessory",
+  "singular": false,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "minLength": 1,
+        "default": "Garage Door"
+      },
+      "http_method": {
+        "title": "HTTP Method",
+        "type": "string",
+        "default": "GET",
+        "enum": [
+          "GET",
+          "POST"
+        ]
+      },
+      "openURL": {
+        "title": "Open URL",
+        "type": "string",
+        "minLength": 1,
+        "placeholder": "http://192.0.2.10/relay/0?turn=on"
+      },
+      "closeURL": {
+        "title": "Close URL",
+        "type": "string",
+        "minLength": 1,
+        "placeholder": "http://192.0.2.10/relay/0?turn=on"
+      },
+      "username": {
+        "title": "HTTP Username",
+        "type": "string"
+      },
+      "password": {
+        "title": "HTTP Password",
+        "type": "string"
+      },
+      "timeout": {
+        "title": "HTTP Timeout (milliseconds)",
+        "type": "integer",
+        "default": 3000,
+        "minimum": 1
+      },
+      "verifyTls": {
+        "title": "Verify HTTPS Certificates",
+        "type": "boolean",
+        "default": false,
+        "description": "Enable certificate verification for HTTPS relay URLs. Disabled by default to preserve compatibility with existing local devices using self-signed certificates."
+      },
+      "webhookPort": {
+        "title": "Webhook Port",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 65535,
+        "description": "Use 0 or leave empty to disable the webhook server."
+      },
+      "openTime": {
+        "title": "Opening Time (seconds)",
+        "type": "number",
+        "default": 10,
+        "minimum": 0
+      },
+      "closeTime": {
+        "title": "Closing Time (seconds)",
+        "type": "number",
+        "default": 10,
+        "minimum": 0
+      },
+      "autoClose": {
+        "title": "Automatic Close",
+        "type": "boolean",
+        "default": false
+      },
+      "autoCloseDelay": {
+        "title": "Automatic Close Delay (seconds)",
+        "type": "number",
+        "default": 20,
+        "minimum": 0
+      },
+      "hasClosedSensor": {
+        "title": "Has Fully Closed Sensor",
+        "type": "boolean",
+        "default": false
+      },
+      "hasOpenSensor": {
+        "title": "Has Fully Open Sensor",
+        "type": "boolean",
+        "default": false
+      },
+      "manufacturer": {
+        "title": "Manufacturer",
+        "type": "string",
+        "default": "simonp2014"
+      },
+      "model": {
+        "title": "Model",
+        "type": "string",
+        "default": "garage-door-relay"
+      },
+      "serial": {
+        "title": "Serial Number",
+        "type": [
+          "string",
+          "number"
+        ],
+        "description": "Leave empty to retain the name-derived serial number used by earlier releases."
+      },
+      "firmware": {
+        "title": "Firmware Revision",
+        "type": "string",
+        "description": "Leave empty to use the installed plugin version."
+      },
+      "debug": {
+        "title": "Debug Logging",
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "autoClose": {
+              "const": true
+            }
+          },
+          "required": [
+            "autoClose"
+          ]
         },
-        "http_method": {
-          "title": "HTTP Method",
-          "type": "string",
-          "oneOf": [
+        "then": {
+          "properties": {
+            "hasClosedSensor": {
+              "const": false
+            },
+            "hasOpenSensor": {
+              "const": false
+            },
+            "webhookPort": {
+              "maximum": 0
+            }
+          }
+        },
+        "else": {
+          "required": [
+            "closeURL"
+          ],
+          "anyOf": [
             {
-              "title": "GET",
-              "enum": [
-                "GET"
+              "properties": {
+                "hasClosedSensor": {
+                  "const": true
+                }
+              },
+              "required": [
+                "hasClosedSensor"
               ]
             },
             {
-              "title": "POST",
-              "enum": [
-                "POST"
+              "properties": {
+                "hasOpenSensor": {
+                  "const": true
+                }
+              },
+              "required": [
+                "hasOpenSensor"
               ]
             }
-          ],
-          "required": true,
-          "default": "GET",
-          "description": "The HTTP method to be used to communicate with the device API."
-
-        },
-        "openURL": {
-          "title": "Open URL",
-          "type": "string",
-          "required": true,
-          "description": "URL to trigger the opening of your garage"
-        },
-        "closeURL": {
-          "title": "Close URL",
-          "type": "string",
-          "description": "URL to trigger the closing of your garage. Not required for auto close"
-        },
-        "username": {
-          "title": "Username",
-          "type": "string",
-          "description": "Username if HTTP authentication is enabled"
-        },
-        "password": {
-          "title": "Password",
-          "type": "string",
-          "description": "Password if HTTP authentication is enabled"
-        },
-        "webhookPort": {
-          "title": "Webhook Port",
-          "type": "integer",
-          "description": "Port for local webhook server listening on <homebridgehost>:<webport>/?<status update>"
-        },
-
-        "openTime": {
-          "title": "Time to open the door",
-          "type": "integer",
-          "required": true,
-          "default": 10,
-          "description": "Time (in seconds) to simulate your garage opening"
-        },
-        "closeTime": {
-          "title": "Time to close the door",
-          "type": "integer",
-          "default": 10,
-          "description": "Time (in seconds) to simulate your garage closing"
-        },
-        "autoClose": {
-          "title": "Auto close",
-          "type": "boolean",
-          "default": false,
-          "description": "Whether your garage should auto-close after being opened. hasClosedSensor and hasOpenSensor must be false"
-        },
-        "autoCloseDelay": {
-          "title": "Auto close delay",
-          "type": "integer",
-          "default": 20,
-          "description": "Time (in seconds) until your garage will automatically close (if enabled)."
-        },
-
-        "hasClosedSensor": {
-          "title": "Has Closed Sensor",
-          "type": "boolean",
-          "required": true,
-          "description": "Does the door have a sensor that will fire to indicate that the door is fully closed"
-        },
-        "hasOpenSensor": {
-          "title": "Has Open Sensor",
-          "type": "boolean",
-          "required": true,
-          "description": "Does the door have a sensor that will fire to indicate that the door is fully open"
-        },
-        "manufacturer": {
-          "title": "Manufactor",
-          "type": "string",
-          "description": "Appears under the Manufacturer field for the accessory"
-        },
-        "model": {
-          "title": "Model",
-          "type": "string",
-          "description": "Appears under the Model field for the accessory"
-        },
-        "debug": {
-          "title": "Debug mode",
-          "type": "boolean",
-          "default": false,
-          "description": "Turn on debug mode, i.e. additional information will show up on the homebridge log."
+          ]
         }
       }
-    }
+    ],
+    "required": [
+      "name",
+      "openURL"
+    ]
+  },
+  "layout": [
+    "name",
+    "http_method",
+    "openURL",
+    "closeURL",
+    "username",
+    "password",
+    "timeout",
+    "verifyTls",
+    "webhookPort",
+    "openTime",
+    "closeTime",
+    "autoClose",
+    "autoCloseDelay",
+    "hasClosedSensor",
+    "hasOpenSensor",
+    "manufacturer",
+    "model",
+    "serial",
+    "firmware",
+    "debug"
+  ]
 }

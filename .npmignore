@@ -1,0 +1,7 @@
+src/
+test/
+coverage/
+node_modules/
+*.tgz
+eslint.config.js
+tsconfig.json

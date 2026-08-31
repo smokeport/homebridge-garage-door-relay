@@ -1,185 +1,145 @@
 <p align="center">
-  <a href="https://github.com/homebridge/homebridge"><img src="https://raw.githubusercontent.com/homebridge/branding/master/logos/homebridge-color-round-stylized.png" height="140"></a>
+  <a href="https://homebridge.io"><img src="https://raw.githubusercontent.com/homebridge/branding/master/logos/homebridge-color-round-stylized.png" height="140" alt="Homebridge"></a>
 </p>
 
 # homebridge-garage-door-relay
 
-[![npm](https://img.shields.io/npm/v/homebridge-garage-door-relay.svg)](https://www.npmjs.com/package/homebridge-garage-door-relay) [![npm](https://img.shields.io/npm/dt/homebridge-garage-door-relay.svg)](https://www.npmjs.com/package/homebridge-garage-door-relay)
+An event-driven Homebridge accessory for a garage door or gate controlled by an HTTP relay, such as a Shelly 1. It supports open and closed endpoint sensors, simulated missing sensors, automatic-closing doors, state persistence, and sensor updates through a local webhook.
 
-This work is forked from https://github.com/calvarium/homebridge-http-garage-door. 
+## Homebridge 2 compatibility
 
-## Description
+Version 2 is a strict TypeScript/ESM implementation built for Homebridge 2 and current supported Node.js releases. It follows the current [Homebridge plugin template](https://github.com/homebridge/homebridge-plugin-template) and [Homebridge 2 migration guidance](https://github.com/homebridge/homebridge/wiki/Updating-To-Homebridge-v2.0).
 
-This [homebridge](https://github.com/nfarina/homebridge) plugin exposes a web-based door or gate opener to Apple's [HomeKit](http://www.apple.com/ios/home/).
-Using simple HTTP requests, the plugin allows you to open/close the door. It works as a general purpose HTTP client for any relay, but it works particularly wel
-l with a Shelly 1 relay.
+Existing installations do **not** need to change their Homebridge configuration:
 
-This version was created with the following aims:
+- The npm plugin name remains `homebridge-garage-door-relay`.
+- The registered accessory name remains `GarageDoorOpener`.
+- The accessory remains a static accessory, avoiding a cache or platform migration.
+- The default serial remains `gd-<name slug>`.
+- Persisted state remains in `garage-door-state-<name slug>.json`.
+- Existing option names, defaults, relay calls, and webhook URLs remain supported.
 
-- Use event driven sensor updates instead of polling for improved feedback of door state during operation
-- Support doors or gates with sensors at the closed position, opened position, both or neither (an auto close door)
-- Support gates or doors that have no sensor but open on request and automatically close after a time period
-- For simplicity don't attempt to detect the stopped state, obstruction or when the door reverses during operation
-- Persist the door state across Homebridge restarts
-- Provide a meachanism to update the door state in the background at periodic intervals in case snesor updates were not successfully delivered
+Keep the configured `name` and any explicit `serial` unchanged during the upgrade so Homebridge retains the same accessory identity.
+
+### Requirements
+
+- Homebridge `1.8.x` or `2.x`
+- Node.js `22.12+`, `24.x`, or `26.x`
+
+Homebridge 1.8 remains supported so the plugin can be upgraded before Homebridge itself.
 
 ## Installation
 
-1. Install [Homebridge](https://github.com/homebridge/homebridge).
-2. Install the plugin by running `npm install -g homebridge-garage-door-relay` or by searching for `homebridge-garage-door-relay` on the [plugins tab](https://github.com/homebridge/homebridge#installing-plugins) if you are using [Homebridge UI](https://www.npmjs.com/package/homebridge-config-ui-x) or [Hoobs](https://hoobs.org/).
-3. Update your Homebridge `config.json` accordingly.
+Install from the Homebridge UI by searching for `homebridge-garage-door-relay`, or install the published package globally:
+
+```sh
+npm install -g homebridge-garage-door-relay
+```
 
 ## Configuration
 
-NOTE: Don't forget to update `shelly_ip` to the IP address of your Shelly relay.
+Add an entry to the `accessories` array in Homebridge's `config.json`:
 
 ```json
-"accessories": [
-     {
-        "accessory": "GarageDoorOpener",
-        "name": "Back door",
-        "http_method": "GET",
-        "openURL": "http://shelly_ip/relay/0?turn=on",
-        "closeURL": "http://shelly_ip/relay/0?turn=on",
-        "autoClose": false,
-        "autoCloseDelay": 60,
-        "hasClosedSensor": true,
-        "hasOpenSensor": false,
-        "openTime": 21,
-        "closeTime": 17,
-        "username": "garage",
-        "password": "Mh4hc7EDJF8mMkzv",
-        "webhookPort": 51828,
-        "manufacturer": "BFT",
-        "model": "SCE-MA (Board)",
-        "debug": "false"
-    }
-]
+{
+  "accessory": "GarageDoorOpener",
+  "name": "Garage Door",
+  "http_method": "GET",
+  "openURL": "http://192.0.2.10/relay/0?turn=on",
+  "closeURL": "http://192.0.2.10/relay/0?turn=on",
+  "openTime": 10,
+  "closeTime": 10,
+  "autoClose": false,
+  "autoCloseDelay": 20,
+  "hasClosedSensor": true,
+  "hasOpenSensor": false,
+  "webhookPort": 51828,
+  "timeout": 3000,
+  "manufacturer": "Shelly",
+  "model": "Shelly 1",
+  "debug": false
+}
 ```
 
-## Options
+### Required options
 
-### Core
+| Option | Description |
+| --- | --- |
+| `accessory` | Must remain `GarageDoorOpener`. |
+| `name` | Accessory name shown in Homebridge and the Home app. |
+| `openURL` | HTTP or HTTPS URL that triggers opening. |
+| `closeURL` | URL that triggers closing. Required unless `autoClose` is enabled. |
+| `hasClosedSensor` | Whether a webhook reports the fully closed endpoint. |
+| `hasOpenSensor` | Whether a webhook reports the fully open endpoint. |
 
-| Key         | Description                               | Default |
-| ----------- | ----------------------------------------- | ------- |
-| `accessory` | Must be `GarageDoorOpener`                | N/A     |
-| `name`      | Name to appear in the Home app            | N/A     |
-| `openURL`   | URL to trigger the opening of your door/gate | N/A     |
-| `closeURL`  | URL to trigger the closing of your door/gate | N/A     |
-| `hasClosedSensor` | Whether your door/gate has a closed sensor that fires in the fully closed position (true/false) | N/A |
-| `hasOpenSensor`   | Whether your door/gate has an open sensor that fires in the fully open position (true/false)   | N/A |
+When `autoClose` is disabled, at least one endpoint sensor must be enabled. A missing opposite endpoint is simulated after `openTime` or `closeTime`.
 
-### Optional fields
+### Optional settings
 
-| Key                  | Description                                                                                                                                                                 | Default             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| `openTime`           | Time (in seconds) to simulate your door/gate opening                                                                                                                           | `10`                |
-| `closeTime`          | Time (in seconds) to simulate your door/gate closing                                                                                                                           | `10`                |
-| `autoClose`           | Whether your door/gate should auto-close after being opened                                                                                                                    | `false`             |
-| `autoCloseDelay`      | Time (in seconds) until your door/garage will automatically close (if enabled)                                                                                                   | `20`                |
+| Option | Default | Description |
+| --- | ---: | --- |
+| `http_method` | `GET` | Relay request method: `GET` or `POST`. |
+| `openTime` | `10` | Expected opening time in seconds. |
+| `closeTime` | `10` | Expected closing time in seconds. |
+| `autoClose` | `false` | Simulate a door that closes automatically without a separate close request. Cannot be combined with sensors or a webhook port. |
+| `autoCloseDelay` | `20` | Seconds after the open relay request before automatic closing begins. |
+| `timeout` | `3000` | Relay HTTP timeout in milliseconds. |
+| `username` / `password` | — | HTTP Basic authentication credentials. Both must be provided to enable authentication. |
+| `verifyTls` | `false` | Verify HTTPS certificates. The compatibility default remains off for existing local devices with self-signed certificates; enable it whenever the relay has a trusted certificate. |
+| `webhookPort` | — | Local port on which sensor webhooks are accepted. Each accessory needs a unique port; leave empty or use `0` to disable it. |
+| `manufacturer` | `simonp2014` | HomeKit manufacturer metadata. |
+| `model` | `garage-door-relay` | HomeKit model metadata. |
+| `serial` | `gd-<name slug>` | HomeKit serial metadata. Keep this stable after pairing. |
+| `firmware` | plugin version | HomeKit firmware metadata. |
+| `debug` | `false` | Enable plugin debug messages. |
 
-### Additional options
+A completed HTTP response retains the historical behavior of counting as a successful relay trigger, regardless of its HTTP status code. GET redirects are followed for up to five hops. Network and timeout failures are reported to Homebridge.
 
-| Key            | Description                                                                                        | Default |
-| -------------- | -------------------------------------------------------------------------------------------------- | ------- |
-| `timeout`      | Time (in milliseconds) until the accessory will be marked as _Not Responding_ if it is unreachable | `3000`  |
-| `http_method`  | HTTP method used to communicate with the device                                                    | `GET`   |
-| `username`     | Username if HTTP authentication is enabled                                                         | N/A     |
-| `password`     | Password if HTTP authentication is enabled                                                         | N/A     |
-| `webhookPort`  | Port for local webhook server triggered at `http://[homebridge ip]:[webhookport/`                     | N/A     |
-| `model`        | Appears under the _Model_ field for the accessory                                                  | plugin  |
-| `serial`       | Appears under the _Serial_ field for the accessory                                                 | version |
-| `manufacturer` | Appears under the _Manufacturer_ field for the accessory                                           | author  |
-| `firmware`     | Appears under the _Firmware_ field for the accessory                                               | version |
-| `debug`        | Display debug messages on Homebridge log                                      | false   |
+## Sensor webhooks
 
-### State key
+Configure `webhookPort`, then send endpoint changes to the root path on the Homebridge host:
 
-| State | Description |
-| ----- | ----------- |
-| `0`   | Open        |
-| `1`   | Closed      |
-| `2`   | Opening     |
-| `3`   | Closing     |
-| `4`   | Stopped     |
+```text
+http://<homebridge-host>:<webhookPort>/?closed=true
+http://<homebridge-host>:<webhookPort>/?closed=false
+http://<homebridge-host>:<webhookPort>/?open=true
+http://<homebridge-host>:<webhookPort>/?open=false
+```
 
+- `closed=true`: the door reached fully closed.
+- `closed=false`: the door left the fully closed position and is opening.
+- `open=true`: the door reached fully open.
+- `open=false`: the door left the fully open position and is closing.
 
-## Wiring
+Only send events for sensors enabled in the accessory configuration. Add `background=true` for a periodic reconciliation update; background events are ignored while an operation is active.
 
-![Shelly 1 wiring](https://savjee.be/uploads/2020-06-smart-garage-door-shelly-home-assistant/shelly-schematic-dc.png)
+The webhook is intentionally local and unauthenticated for compatibility. Restrict the selected port to a trusted LAN and do not expose it to the internet.
 
-More information at https://savjee.be/2020/06/make-garage-door-opener-smart-shelly-esphome-home-assistant/
+## State persistence and identity
 
-### Videos on wiring
+The current state is stored under Homebridge's persist directory as:
 
-- [Shelly1 Garage Door Control](https://www.youtube.com/watch?v=aV7gOWjia5w)
-- [Automate your Garage Door! The PERFECT First DIY Smart Home Project](https://www.youtube.com/watch?v=WEZUxXNiERQ)
+```text
+garage-door-state-<lowercase-name-with-nonalphanumerics-as-dashes>.json
+```
 
-## Door / Gate sensors
+Changing `name` changes this path and the default serial. If a rename is necessary, set an explicit stable `serial` first and move the state file while Homebridge is stopped.
 
-Door sensors are used to signal changes to this accessory and adjust the door state accordingly. Ideally, for a garage door there would be a sensor at each end of the track to signal when the door is in the fully opened or closed state. Where there is a missing sensor at one end of the track this accessory will simulate the door operation assuming that the door reaches the required state after a specified timeout.
+## Development
 
-I used two Aqara P2 Door Sensors at each end of the track to detect the door position and send immediate updates through the webhook interface. I did this by creating a HomeKit automation for each sensor for their open and closed states to run a shortcut that fires a web request to the webhook (see below for details).
+```sh
+npm install
+npm run lint
+npm test
+npm pack --dry-run
+```
 
-You could also use a Reed Switch sensor directly wired to the Shelly relay to perform that case of the Open or Closed sensor. (The Shelly relay would need to be configured to call the webhook URL with the required parameters when it's switch input changes state).
+`npm test` builds the strict TypeScript source and runs the Node.js test suite. Publishing also runs lint and tests through `prepublishOnly`.
 
-The Reed Switch sensor would be connected between `L` and `SW` (order is irrelevant). These cost between €2 and €5.
+## Credits
 
-![Reed Switch](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQlGm8m0RQnE2NE15JjLc4KEOUdR0QghniwDQkSQjto3mPq9qPUVGmlrB5vBVWsL1sJlLU9sWAOs4Y&usqp=CAc)
+Originally forked from [calvarium/homebridge-http-garage-door](https://github.com/calvarium/homebridge-http-garage-door).
 
-A Shelly 1 relay can be configured to use its built-in **Actions** to call the webhook interface when the sensor input changes the switch input state:
+## License
 
-1. Open your **Shelly 1 Web Interface** (or use the Shelly app).  
-   Navigate to: **Settings → Actions** (or **I/O URL Actions** depending on firmware version).
-
-2. Enable **Actions**.
-
-3. Add the URLs you want to trigger:
-   - **Button switched ON URL** → e.g.  
-     ```
-     https://yourserver.example/garage?state=open
-     ```
-   - **Button switched OFF URL** → e.g.  
-     ```
-     https://yourserver.example/garage?state=close
-     ```
-
-   You can add multiple URLs per action if needed.
-
-The configuration of the accessory needs to specify which sensors will provide status updates. The values are:
-
-- Set *hasClosedSensor = true* if there is a sensor that fires when the door reaches the fully closed position and immediately as the door starts to open
-- Set *hasOpenSensor = true* if there is a sensor that fires when the door reaches the fully open position and immediately as the door starts to close
-
-## Webhook Interface
-
-Sensors notify the accessory of changes to the state of the door through the webhook interface. The format of the URL used for these updates is:
-
-http://[ip of homebridge]:[webhookport>]/?[sensor name]=true|false
-
-where [sensor name] is either *open* or *closed*.
-
-For example, if you have Homebridge running on local address 192.168.0.12 and this accessory is configured to have a webhookport of 51827 you would indicate that the door has reached the fully close position with:
-
-http://192.168.0.12:51827/?closed=true (Door is now fully closed)
-
-When the door starts to open this URL would then be triggered:
-
-http://192.168.0.12:51827/?closed=false  (Door has started to open)
-
-In both these cases the accessory must be configured with hasClosedSensor = true.
-
-Similarly, if you have a sensor at the fully open position (i.e. hasOpenSensor = true) you would setup the sensor to fire these URLs as it changed state:
-
-http://192.168.0.12:51827/?open=true (Door is now fully open)
-
-http://192.168.0.12:51827/?open=false  (Door has started to close)
-
-
-
-
-
-
-
-
+[MIT](LICENSE)

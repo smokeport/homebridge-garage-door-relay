@@ -12,6 +12,7 @@ export class WebhookServer {
     private readonly port: number,
     private readonly log: Logging,
     private readonly handler: WebhookHandler,
+    private readonly debug = false,
   ) {}
 
   async start(): Promise<void> {
@@ -56,10 +57,14 @@ export class WebhookServer {
     await new Promise<void>((resolve, reject) => {
       server.close(error => error ? reject(error) : resolve());
     });
+    this.log.info(`Webhook server on port ${this.port} stopped`);
   }
 
   private async handleRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
     try {
+      if (this.debug) {
+        this.log.debug(`Webhook request: ${request.method ?? 'UNKNOWN'} ${request.url ?? '/'}`);
+      }
       const url = new URL(request.url ?? '/', 'http://localhost');
 
       if (url.pathname !== '/') {

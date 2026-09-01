@@ -33,6 +33,23 @@ const TARGET_STATE = {
 type CurrentState = typeof CURRENT_STATE[keyof typeof CURRENT_STATE];
 type TargetState = typeof TARGET_STATE[keyof typeof TARGET_STATE];
 
+function doorStateToString(state: number): string {
+  switch (state) {
+  case CURRENT_STATE.OPEN:
+    return 'OPEN';
+  case CURRENT_STATE.CLOSED:
+    return 'CLOSED';
+  case CURRENT_STATE.OPENING:
+    return 'OPENING';
+  case CURRENT_STATE.CLOSING:
+    return 'CLOSING';
+  case CURRENT_STATE.STOPPED:
+    return 'STOPPED';
+  default:
+    return `UNKNOWN (${state})`;
+  }
+}
+
 const packageVersion = (() => {
   try {
     const require = createRequire(import.meta.url);
@@ -233,6 +250,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
         this.config.webhookPort,
         this.log,
         parameters => this.handleWebhook(parameters),
+        this.config.debug,
       );
     }
 
@@ -267,9 +285,11 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
   private async setTargetDoorState(value: CharacteristicValue): Promise<void> {
     const requestedState = Number(value);
+    this.log.info(`HomeKit requested target door state ${doorStateToString(requestedState)}`);
 
     if (requestedState === TARGET_STATE.OPEN) {
       if (this.currentState === CURRENT_STATE.OPEN || this.currentState === CURRENT_STATE.OPENING) {
+        this.debug(`No action needed because the door is already ${doorStateToString(this.currentState)}`);
         return;
       }
       await this.startOpening();
@@ -279,6 +299,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
     if (requestedState === TARGET_STATE.CLOSED) {
       if (this.config.autoClose) {
         if (this.currentState === CURRENT_STATE.CLOSED || this.currentState === CURRENT_STATE.CLOSING) {
+          this.debug(`No action needed because the door is already ${doorStateToString(this.currentState)}`);
           return;
         }
         this.clearAllTimers();
@@ -287,16 +308,19 @@ export class GarageDoorOpener implements AccessoryPlugin {
       }
 
       if (this.currentState === CURRENT_STATE.CLOSED || this.currentState === CURRENT_STATE.CLOSING) {
+        this.debug(`No action needed because the door is already ${doorStateToString(this.currentState)}`);
         return;
       }
       await this.startClosing();
       return;
     }
 
+    this.log.warn(`Unsupported target door state: ${doorStateToString(requestedState)}`);
     throw new Error(`Unsupported target door state: ${String(value)}`);
   }
 
   private async startOpening(): Promise<void> {
+    this.log.info('Starting to open the door');
     this.clearAllTimers();
     const operationToken = this.beginOperation();
     this.setTargetState(TARGET_STATE.OPEN);
@@ -322,6 +346,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
     } else {
       this.scheduleMovement(this.config.openTime, () => {
         this.setCurrentState(CURRENT_STATE.OPEN);
+        this.log.info('Door opened (simulated)');
       });
     }
 
@@ -339,6 +364,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
       throw new Error('Cannot close without a configured closeURL');
     }
 
+    this.log.info('Starting to close the door');
     this.clearAllTimers();
     const operationToken = this.beginOperation();
     this.setTargetState(TARGET_STATE.CLOSED);
@@ -364,17 +390,20 @@ export class GarageDoorOpener implements AccessoryPlugin {
     } else {
       this.scheduleMovement(this.config.closeTime, () => {
         this.setCurrentState(CURRENT_STATE.CLOSED);
+        this.log.info('Door closed (simulated)');
       });
     }
   }
 
   private startAutomaticClose(): void {
+    this.log.info('Starting automatic close');
     this.beginOperation();
     this.clearMovementTimer();
     this.setTargetState(TARGET_STATE.CLOSED);
     this.setCurrentState(CURRENT_STATE.CLOSING);
     this.scheduleMovement(this.config.closeTime, () => {
       this.setCurrentState(CURRENT_STATE.CLOSED);
+      this.log.info('Door closed (automatic close simulated)');
     });
   }
 
@@ -427,6 +456,11 @@ export class GarageDoorOpener implements AccessoryPlugin {
 
   private handleOpenSensor(value: string, background: boolean): void {
     if (value === 'true') {
+      if (background) {
+        this.debug('Background update reports that the door is open');
+      } else {
+        this.log.info('Door is open (open sensor triggered)');
+      }
       this.beginOperation();
       this.clearMovementTimer();
       this.setTargetState(TARGET_STATE.OPEN);
@@ -455,6 +489,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
       return;
     }
 
+    this.log.info('Door closing was manually started');
     this.beginOperation();
     this.clearMovementTimer();
     this.setTargetState(TARGET_STATE.CLOSED);
@@ -465,12 +500,18 @@ export class GarageDoorOpener implements AccessoryPlugin {
     } else {
       this.scheduleMovement(this.config.closeTime, () => {
         this.setCurrentState(CURRENT_STATE.CLOSED);
+        this.log.info('Door closed after manual movement (simulated)');
       });
     }
   }
 
   private handleClosedSensor(value: string, background: boolean): void {
     if (value === 'true') {
+      if (background) {
+        this.debug('Background update reports that the door is closed');
+      } else {
+        this.log.info('Door is closed (closed sensor triggered)');
+      }
       this.beginOperation();
       this.clearAllTimers();
       this.setTargetState(TARGET_STATE.CLOSED);
@@ -499,6 +540,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
       return;
     }
 
+    this.log.info('Door opening was manually started');
     this.beginOperation();
     this.clearMovementTimer();
     this.setTargetState(TARGET_STATE.OPEN);
@@ -509,6 +551,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
     } else {
       this.scheduleMovement(this.config.openTime, () => {
         this.setCurrentState(CURRENT_STATE.OPEN);
+        this.log.info('Door opened after manual movement (simulated)');
       });
     }
   }
@@ -623,7 +666,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
       .getCharacteristic(this.api.hap.Characteristic.CurrentDoorState)
       .updateValue(state);
     this.persistState();
-    this.debug(`Current door state changed to ${state}`);
+    this.debug(`Current door state changed to ${doorStateToString(state)}`);
   }
 
   private setTargetState(state: TargetState): void {
@@ -631,7 +674,7 @@ export class GarageDoorOpener implements AccessoryPlugin {
     this.garageDoorService
       .getCharacteristic(this.api.hap.Characteristic.TargetDoorState)
       .updateValue(state);
-    this.debug(`Target door state changed to ${state}`);
+    this.debug(`Target door state changed to ${doorStateToString(state)}`);
   }
 
   private debug(message: string): void {

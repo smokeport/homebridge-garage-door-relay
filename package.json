@@ -1,45 +1,55 @@
 {
   "name": "homebridge-garage-door-relay",
-  "version": "1.0.10",
+  "version": "2.0.0",
   "displayName": "Garage Door Relay (event driven, multi-sensor)",
-  "description": "Homebridge plugin for a garage door or gate opener using a relay (like a Shelly 1) and support for sensors in the fully open or fully closed position. It uses event driven updates rather than polling",
-  "homepage": "https://github.com/simonp2014/homebridge-garage-door-relay",
-  "main": "index.js",
+  "description": "Event-driven Homebridge plugin for a garage door or gate opener using an HTTP-controlled relay and optional open and closed sensors.",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "config.schema.json",
+    "config.sample.json",
+    "LICENSE",
+    "README.md"
+  ],
   "engines": {
-    "homebridge": ">=1.0",
-    "node": ">=20"
+    "homebridge": "^1.8.0 || ^2.0.0",
+    "node": "^22.12.0 || ^24.0.0 || ^26.0.0"
   },
   "scripts": {
-    "lint": "eslint .",
-    "test": "jest"
+    "build": "rimraf dist && tsc",
+    "lint": "eslint . --max-warnings=0",
+    "test": "npm run build && node --test test/*.test.js",
+    "prepublishOnly": "npm run lint && npm test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/simonp2014/homebridge-garage-door-relay.git"
+    "url": "git+https://github.com/smokeport/homebridge-garage-door-relay.git"
   },
-  "dependencies": {
-    "jsonpath": "^1.0.2",
-    "request": "^2.88.2",
-    "ws": "^8.18.2"
+  "homepage": "https://github.com/smokeport/homebridge-garage-door-relay#readme",
+  "bugs": {
+    "url": "https://github.com/smokeport/homebridge-garage-door-relay/issues"
   },
   "keywords": [
     "homebridge-plugin",
+    "supports-hap",
     "homebridge",
     "garage",
     "garagedoor",
-    "home",
-    "remote",
+    "gate",
+    "relay",
     "shelly",
     "shelly1"
   ],
   "author": "simonp2014",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/simonp2014/homebridge-garage-door-relay/issues"
-  },
-
   "devDependencies": {
-    "eslint": "^9.29.0",
-    "jest": "^30.0.2"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.10.0",
+    "eslint": "^10.9.0",
+    "homebridge": "^2.4.0",
+    "rimraf": "^6.1.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
   }
 }
